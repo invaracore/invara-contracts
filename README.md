@@ -33,7 +33,7 @@ The deployer can register a new market once (token + price feed + ceiling). It h
 Requires [Foundry](https://book.getfoundry.sh/).
 
 ```bash
-git clone --recurse-submodules https://github.com/INVARA-Core/invara-contracts
+git clone --recurse-submodules https://github.com/invaracore/invara-contracts
 cd invara-contracts
 forge build
 forge test

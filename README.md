@@ -24,7 +24,7 @@ Website: [invaracore.com](https://www.invaracore.com) · Docs: [invaracore.com/d
 | Liquidation reward | 5% (liquidator receives 105% of the debt value repaid) |
 | Minimum collateral for a position with debt | 100 (stablecoin units) |
 | Price staleness limit (AAPL) | 26 hours: priced actions pause over weekends; full repay & withdraw always work |
-| Debt ceiling (iAAPL) | 1,000 iAAPL, fixed at registration |
+| Debt ceiling (iAAPL) | 50 iAAPL, fixed at registration |
 
 The deployer can register a new market once (token + price feed + ceiling). It has no other power: it cannot pause the vault, change parameters, or touch collateral.
 

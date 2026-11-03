@@ -149,6 +149,8 @@ contract InvaraVault {
     /// @dev The liquidator always receives 105% of the burned debt's value. If the position cannot cover that
     ///      (collateral below 105%), the burn is reduced to what the collateral pays for, all collateral is seized,
     ///      and the remaining debt is written off and recorded in `badDebt`.
+    ///      A partial liquidation that would leave debt backed by less than MIN_COLLATERAL liquidates the whole
+    ///      position instead, so the liquidator must then burn the full debt.
     function liquidatePosition(bytes32 priceId, address borrower, uint256 burnAmount) external {
         ISyntheticToken synToken = syntheticTokens[priceId];
         if (address(synToken) == address(0)) revert TokenNotRegistered();
@@ -160,18 +162,12 @@ contract InvaraVault {
         }
 
         uint256 assetPrice = ORACLE_ADAPTER.getAssetPrice(priceId);
+        uint256 collateralToSeize;
+        (collateralToSeize, burnAmount) = _liquidationAmounts(assetPrice, pos.collateralAmount, burnAmount);
 
-        // Seize value = (debtBurned * assetPrice * 105%) converted to USDC (6 decimals)
-        uint256 collateralToSeize =
-            (burnAmount * assetPrice * LIQUIDATION_BONUS) / (PRECISION * USDC_DECIMALS_OFFSET * PERCENT_BASE);
-
-        if (collateralToSeize > pos.collateralAmount) {
-            // Collateral can't pay the full bonus: burn only the debt it covers (rounded up), take all collateral
-            collateralToSeize = pos.collateralAmount;
-            uint256 covered = _ceilDiv(
-                collateralToSeize * PRECISION * USDC_DECIMALS_OFFSET * PERCENT_BASE, assetPrice * LIQUIDATION_BONUS
-            );
-            if (covered < burnAmount) burnAmount = covered;
+        // Never leave a dust position: if debt would remain on less than MIN_COLLATERAL, liquidate all of it
+        if (burnAmount < pos.syntheticMinted && pos.collateralAmount - collateralToSeize < MIN_COLLATERAL) {
+            (collateralToSeize, burnAmount) = _liquidationAmounts(assetPrice, pos.collateralAmount, pos.syntheticMinted);
         }
 
         pos.syntheticMinted -= burnAmount;
@@ -191,6 +187,23 @@ contract InvaraVault {
 
         synToken.burnFrom(msg.sender, burnAmount);
         USDC.safeTransfer(msg.sender, collateralToSeize);
+    }
+
+    /// @dev Collateral to seize for burning `burnAmount` of debt: 105% of its value in USDC (6 decimals). When the
+    ///      collateral can't pay that, all of it is seized and the burn shrinks to the debt it covers (rounded up).
+    function _liquidationAmounts(uint256 assetPrice, uint256 collateral, uint256 burnAmount)
+        internal
+        pure
+        returns (uint256 collateralToSeize, uint256 burn)
+    {
+        burn = burnAmount;
+        collateralToSeize = (burn * assetPrice * LIQUIDATION_BONUS) / (PRECISION * USDC_DECIMALS_OFFSET * PERCENT_BASE);
+        if (collateralToSeize > collateral) {
+            collateralToSeize = collateral;
+            uint256 covered =
+                _ceilDiv(collateral * PRECISION * USDC_DECIMALS_OFFSET * PERCENT_BASE, assetPrice * LIQUIDATION_BONUS);
+            if (covered < burn) burn = covered;
+        }
     }
 
     function _isHealthy(bytes32 priceId, address user) internal view returns (bool) {

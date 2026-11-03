@@ -393,6 +393,78 @@ contract InvaraVaultTest is Test {
         assertTrue(debt == 0 || coll > 0); // never leaves debt with zero collateral
     }
 
+    // ── minimum collateral after liquidation ─────────────────────────────
+
+    function testPartialLiquidationKeepsPositionAboveMinCollateral() public {
+        _openUnhealthyPosition(); // 270 USDC / 1 iAAPL at $220
+
+        // burning 0.5 seizes 115.5 USDC; 154.5 USDC is left, above the minimum: stays partial
+        vm.prank(liquidator);
+        vault.liquidatePosition(AAPL_PRICE_ID, user, HALF_SYNTHETIC);
+
+        (uint256 coll, uint256 debt) = vault.positions(AAPL_PRICE_ID, user);
+        assertEq(debt, HALF_SYNTHETIC);
+        assertEq(coll, 154.5e6);
+    }
+
+    function testPartialLiquidationBelowMinCollateralLiquidatesFully() public {
+        _openUnhealthyPosition();
+
+        // burning 0.8 would seize 184.8 USDC and leave 85.2 USDC (below 100) backing 0.2 iAAPL of debt
+        uint256 iaaplBefore = iaaplToken.balanceOf(liquidator);
+        vm.prank(liquidator);
+        vault.liquidatePosition(AAPL_PRICE_ID, user, 0.8e18);
+
+        // instead the whole debt is burned for 231 USDC (1 x $220 x 105%); the rest stays with the borrower
+        assertEq(iaaplBefore - iaaplToken.balanceOf(liquidator), ONE_SYNTHETIC);
+        (uint256 coll, uint256 debt) = vault.positions(AAPL_PRICE_ID, user);
+        assertEq(debt, 0);
+        assertEq(coll, 39e6);
+        assertEq(vault.badDebt(AAPL_PRICE_ID), 0);
+    }
+
+    function testFuzzLiquidationNeverLeavesDustPosition(uint256 priceUsd, uint256 burnAmount) public {
+        priceUsd = bound(priceUsd, 208, 5000);
+        burnAmount = bound(burnAmount, 1, ONE_SYNTHETIC);
+        vm.startPrank(user);
+        assertTrue(usdc.approve(address(vault), ONE_THOUSAND_USDC));
+        vault.depositAndMint(AAPL_PRICE_ID, TWO_HUNDRED_SEVENTY_USDC, ONE_SYNTHETIC);
+        vm.stopPrank();
+
+        vm.startPrank(liquidator);
+        usdc.mint(liquidator, 100_000 * 1e6);
+        assertTrue(usdc.approve(address(vault), type(uint256).max));
+        vault.depositAndMint(AAPL_PRICE_ID, 50_000 * 1e6, ONE_SYNTHETIC);
+        vm.stopPrank();
+        // forge-lint: disable-next-line(unsafe-typecast)
+        _setPrice(AAPL_PRICE_ID, int64(int256(priceUsd)) * FEED_UNIT);
+
+        uint256 iaaplBefore = iaaplToken.balanceOf(liquidator);
+        vm.prank(liquidator);
+        vault.liquidatePosition(AAPL_PRICE_ID, user, burnAmount);
+        uint256 burned = iaaplBefore - iaaplToken.balanceOf(liquidator);
+
+        (uint256 coll, uint256 debt) = vault.positions(AAPL_PRICE_ID, user);
+        assertTrue(debt == 0 || coll >= vault.MIN_COLLATERAL()); // remaining debt always meets the minimum
+        assertEq(debt + vault.badDebt(AAPL_PRICE_ID) + burned, ONE_SYNTHETIC); // all debt accounted for
+    }
+
+    /// @dev User opens 270 USDC / 1 iAAPL at $200, then AAPL moves to $220 (below 130%); the liquidator holds 1 iAAPL
+    function _openUnhealthyPosition() internal {
+        vm.startPrank(user);
+        assertTrue(usdc.approve(address(vault), ONE_THOUSAND_USDC));
+        vault.depositAndMint(AAPL_PRICE_ID, TWO_HUNDRED_SEVENTY_USDC, ONE_SYNTHETIC);
+        vm.stopPrank();
+
+        vm.startPrank(liquidator);
+        usdc.mint(liquidator, ONE_THOUSAND_USDC);
+        assertTrue(usdc.approve(address(vault), ONE_THOUSAND_USDC));
+        vault.depositAndMint(AAPL_PRICE_ID, FIVE_HUNDRED_USDC, ONE_SYNTHETIC);
+        vm.stopPrank();
+
+        _setPrice(AAPL_PRICE_ID, 220 * FEED_UNIT);
+    }
+
     /// @dev Sets a market's on-chain price (8 decimals), binding a mock feed to it on first use
     function _setPrice(bytes32 id, int256 answer) internal {
         if (address(feeds[id]) == address(0)) {

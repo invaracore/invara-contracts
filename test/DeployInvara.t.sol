@@ -42,7 +42,7 @@ contract DeployInvaraTest is Test {
 
         InvaraSyntheticToken iaapl = InvaraSyntheticToken(iaaplAddr);
         assertEq(iaapl.VAULT(), vaultAddr);
-        assertEq(vault.debtCeiling(AAPL_PRICE_ID), 1000e18);
+        assertEq(vault.debtCeiling(AAPL_PRICE_ID), 50e18);
 
         InvaraChainlinkOracle oracle = InvaraChainlinkOracle(oracleAddr);
         (AggregatorV3Interface agg, uint32 maxAge,) = oracle.feeds(AAPL_PRICE_ID);

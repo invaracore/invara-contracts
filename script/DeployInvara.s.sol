@@ -18,13 +18,12 @@ contract DeployInvara is Script {
         address usdcAddress = vm.envOr("USDC_ADDRESS", RH_USDG);
         address aaplFeed = vm.envOr("AAPL_CHAINLINK_FEED", RH_CHAINLINK_AAPL_USD);
         // Market id for AAPL in the vault (a fixed bytes32 key the app uses)
-        bytes32 aaplMarketId = vm.envOr(
-            "AAPL_PRICE_ID", bytes32(0x49f6b65cb1de6b10eaf75e7c03ca029c306d0357e91b5311b175084a5ad55688)
-        );
+        bytes32 aaplMarketId =
+            vm.envOr("AAPL_PRICE_ID", bytes32(0x49f6b65cb1de6b10eaf75e7c03ca029c306d0357e91b5311b175084a5ad55688));
         // Feed updates at least every 24h on trading days; 26h tolerates a late heartbeat, weekends pause
         uint256 maxAge = vm.envOr("AAPL_MAX_PRICE_AGE", uint256(26 hours));
-        // Permanent cap on outstanding iAAPL (18 decimals); default 1,000 iAAPL
-        uint256 aaplCeiling = vm.envOr("AAPL_DEBT_CEILING", uint256(1000e18));
+        // Permanent cap on outstanding iAAPL (18 decimals); default 50 iAAPL (low cap until a formal audit)
+        uint256 aaplCeiling = vm.envOr("AAPL_DEBT_CEILING", uint256(50e18));
 
         // Robinhood Chain mainnet: refuse anything but USDG and the official Chainlink AAPL/USD feed
         if (block.chainid == 4663) {
